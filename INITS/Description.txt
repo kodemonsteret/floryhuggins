@@ -1,0 +1,7 @@
+All Onedropfiles are with mean A=0.2  and mean B=0.4'
+regular are on a Nx=30 dx=1 grid
+highres are on Nx=60 dx=0.5
+
+
+
+
