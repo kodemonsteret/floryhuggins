@@ -491,7 +491,7 @@ class integrator:
         Grid1 = self.step(Grid1, self.dt)
         Grid2 = self.step(Grid2, self.dt/2)
         Grid2 = self.step(Grid2, self.dt/2)
-        if np.all(np.abs((Grid1-Grid2)) < 1e-5):
+        if np.all(np.abs((Grid1-Grid2)) < 1e-5) and np.all(np.abs(np.sum((Grid1-Grid2),axis=1)) < 1e-5):
             self.Grid = Grid2
             try:
                 self.Grid = self.boundary(self.Grid)
