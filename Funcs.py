@@ -356,7 +356,6 @@ class TimePartial:
         self.action = action
         return self
     
-
     def setup_FH(self,
                  chi: list[float] = [1,0,0],   # AB SA SB interaction parameters
                  v: float = 1., # molecular volume
@@ -371,7 +370,47 @@ class TimePartial:
             laplacian = Deriv(axis=False, order=2, L=self.L, Nx=self.Nx, N_diff=5, closed_axis=self.closed_axis)
         if self.useGPU:
             laplacian = cp.sparse.csr_matrix(laplacian)
-            kappaAB = (v**(2/3)/2)*cp.array([chi[0]-chi[1]-chi[2],chi[0]-chi[1]-chi[2]])
+            kappaAB = ((v**(2/3))/2)*cp.array([chi[0]-chi[1]-chi[2],chi[0]-chi[1]-chi[2]])
+            kappas = (v**(2/3))*cp.array([chi[1],chi[2]])
+            chiAB = chi[0]
+            chi = cp.array([chi[1:]])
+            
+            def action(vec):
+                Diff = laplacian @ vec
+                LAP = Diff[:,::-1]*kappaAB
+                LAPR = Diff*kappas 
+                exchange_AB = cp.log(vec)-cp.log(vec[:,::-1])+chiAB*(vec[:,::-1]-vec)+(chi-chi[::-1])*(1-vec-vec[:,::-1])+(chiAB+chi[::-1]-chi)*Diff[:,::-1]-(chiAB+chi[::-1]-chi)*Diff
+                return laplacian@(kBT*(cp.log(vec)-cp.log((1-vec-vec[:,::-1]))+(chiAB-chi[::-1])*vec[:,::-1] + chi*(1-2*vec-vec[:,::-1])+LAP-LAPR+exchange_AB))
+            self.action = action 
+        else:
+            kappaAB = ((v**(2/3))/2)*np.array([chi[0]-chi[1]-chi[2],chi[0]-chi[1]-chi[2]])
+            kappas = (v**(2/3))*np.array([chi[1],chi[2]])
+            chiAB = chi[0]
+            chi = np.array([chi[1:]])
+            
+            def action(vec):
+                Diff = laplacian @ vec
+                LAP = Diff[:,::-1]*kappaAB
+                LAPR = Diff*kappas 
+                exchange_AB = np.log(vec)-np.log(vec[:,::-1])+chiAB*(vec[:,::-1]-vec)+(chi-chi[::-1])*(1-vec-vec[:,::-1])+(chiAB+chi[::-1]-chi)*Diff[:,::-1]-(chiAB+chi[::-1]-chi)*Diff
+                return laplacian@(kBT*(np.log(vec)-np.log((1-vec-vec[:,::-1]))+(chiAB-chi[::-1])*vec[:,::-1] + chi*(1-2*vec-vec[:,::-1])+LAP-LAPR+exchange_AB))
+            self.action = action 
+
+    def setup_FH_old(self,
+                 chi: list[float] = [1,0,0],   # AB SA SB interaction parameters
+                 v: float = 1., # molecular volume
+                 kBT: float = 1., # boltzman constant times temperature 
+                 precision: str = 'normal'
+                 ):
+        '''setup timepartial according to the Flory huggins potential assuming constant temperature'''
+        self.params = '\n'.join(('chi: AB, AS, BS',f'chi: {chi}', f'v: {v}', f'kBT: {kBT}'))
+        if precision == 'normal':
+            laplacian = Deriv(axis=False, order=2, L=self.L, Nx=self.Nx, closed_axis=self.closed_axis)
+        elif precision == 'high':
+            laplacian = Deriv(axis=False, order=2, L=self.L, Nx=self.Nx, N_diff=5, closed_axis=self.closed_axis)
+        if self.useGPU:
+            laplacian = cp.sparse.csr_matrix(laplacian)
+            kappaAB = ((v**(2/3))/2)*cp.array([chi[0]-chi[1]-chi[2],chi[0]-chi[1]-chi[2]])
             kappas = (v**(2/3))*cp.array([chi[1],chi[2]])
             chiAB = chi[0]
             chi = cp.array([chi[1:]])
@@ -383,7 +422,7 @@ class TimePartial:
                 return laplacian@(kBT*(cp.log(vec)-cp.log((1-vec-vec[:,::-1]))+(chiAB-chi[::-1])*vec[:,::-1] + chi*(1-2*vec-vec[:,::-1])+LAP-LAPR))
             self.action = action 
         else:
-            kappaAB = (v**(2/3)/2)*np.array([chi[0]-chi[1]-chi[2],chi[0]-chi[1]-chi[2]])
+            kappaAB = ((v**(2/3))/2)*np.array([chi[0]-chi[1]-chi[2],chi[0]-chi[1]-chi[2]])
             kappas = (v**(2/3))*np.array([chi[1],chi[2]])
             chiAB = chi[0]
             chi = np.array([chi[1:]])
@@ -395,40 +434,7 @@ class TimePartial:
                 return laplacian@(kBT*(np.log(vec)-np.log((1-vec-vec[:,::-1]))+(chiAB-chi[::-1])*vec[:,::-1] + chi*(1-2*vec-vec[:,::-1])+LAP-LAPR))
             self.action = action 
 
-    def setup_FH_old(self,
-                 chi: list[float] = [1,0,0],   # AB SA SB interaction parameters
-                 v: float = 1., # molecular volume
-                 kBT: float = 1., # boltzman constant times temperature 
-                 kappaA: float = 1.,
-                 kappaB: float =1.,
-                 kappaS: float = 1.,
-                 precision: str = 'normal'
-                 ):
-        '''setup timepartial according to the Flory huggins potential assuming constant temperature'''
-        self.params = '\n'.join(('chi: AB, AS, BS',f'chi: {chi}', f'v: {v}', f'kBT: {kBT}', f'kappaA: {kappaA}', f'kappaB: {kappaB}'))
-        if precision == 'normal':
-            laplacian = Deriv(axis=False, order=2, L=self.L, Nx=self.Nx, closed_axis=self.closed_axis)
-        elif precision == 'high':
-            laplacian = Deriv(axis=False, order=2, L=self.L, Nx=self.Nx, N_diff=5, closed_axis=self.closed_axis)
-        if self.useGPU:
-            laplacian = cp.sparse.csr_matrix(laplacian)
-            chiAB = chi[0]
-            chi = cp.array([chi[1:]])
-            kappamatrix = cp.array([[kappaA,kappaB]])
-            def action(vec):
-                LAP = (laplacian @ vec)*kappamatrix
-                LAPR = kappaS*laplacian @ (vec[:,::-1]+vec)
-                return laplacian@(kBT*(cp.log(vec)-cp.log((1-vec-vec[:,::-1]))+(chiAB-chi[::-1])*vec[:,::-1] + chi*(1-2*vec-vec[:,::-1]))-LAP-LAPR)
-            self.action = action 
-        else:
-            chiAB = chi[0]
-            chi = np.array([chi[1:]])
-            kappamatrix = np.array([[kappaA,kappaB]])
-            def action(vec):
-                LAP = (laplacian @ vec)*kappamatrix
-                LAPR = kappaS*laplacian @ (vec[:,::-1]+vec)
-                return laplacian@(kBT*(np.log(vec)-np.log((1-vec-vec[:,::-1]))+(chiAB-chi[::-1])*vec[:,::-1] + chi*(1-2*vec-vec[:,::-1]))-LAP-LAPR)
-            self.action = action 
+    
 
     
 
@@ -738,15 +744,6 @@ class integrator:
 
 
 def gmm(mu1=0.4,sigma1=0.02,mu2=0.3,sigma2=0.02,dim = [60,60]):
-    """Function to generate a grid with two Gaussian distributions
-    Args:
-    dim: list[int], dimensions of the grid
-    mu1: float, mean of the first Gaussian distribution
-    sigma1: float, standard deviation of the first Gaussian distribution
-    mu2: float, mean of the second Gaussian distribution
-    sigma2: float, standard deviation of the second Gaussian distribution
-    Returns:
-    np.ndarray, grid with two Gaussian distributions"""
     grid1 = np.random.normal(mu1,sigma1,[1,np.prod(dim)])
     grid2 = np.random.normal(mu2,sigma2,[1,np.prod(dim)])
     grid = np.append(grid1,grid2,axis=0)
